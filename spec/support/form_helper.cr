@@ -3,7 +3,7 @@ class Form
   end
 
   def text_input(name)
-    "<input type=\"text\" name=\"#{name.to_s}\" \\>"
+    "<input type=\"text\" name=\"#{name}\" \\>"
   end
 end
 

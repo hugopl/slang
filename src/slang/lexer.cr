@@ -206,7 +206,7 @@ module Slang
       @token.type = :CONTROL
       next_char
       next_char if current_char == ' '
-      @token.value = consume_line(escape_double_quotes = false)
+      @token.value = consume_line(escape_double_quotes: false)
     end
 
     private def consume_output
@@ -228,7 +228,7 @@ module Slang
       end
 
       skip_whitespace
-      @token.value = consume_line(escape_double_quotes = false).strip
+      @token.value = consume_line(escape_double_quotes: false).strip
       @token.value = " #{@token.value}" if prepend_whitespace
       @token.value = "#{@token.value} " if append_whitespace
     end
@@ -349,7 +349,7 @@ module Slang
       @token.value = "\"#{consume_line}\""
     end
 
-    private def consume_line(escape_double_quotes = true)
+    private def consume_line(*, escape_double_quotes = true)
       String.build do |str|
         loop do
           if current_char == '\n' || current_char == '\0'
@@ -377,9 +377,6 @@ module Slang
       String.build do |str|
         open_count = 0
 
-        is_str = false
-        is_in_parenthesis = false
-        is_in_interpolation = false
         loop do
           case current_char
           when '='

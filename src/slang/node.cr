@@ -28,7 +28,7 @@ module Slang
         count += 1 unless current_parent.class.name.ends_with?("Control")
         current_parent = current_parent.parent
       end
-      return count
+      count
     end
 
     def indentation_spaces
