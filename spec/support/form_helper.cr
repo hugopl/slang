@@ -8,7 +8,7 @@ class Form
 end
 
 module FormHelper
-  def form_for
+  def form_for(&)
     @form = Form.new
     String.build do |__form__|
       __form__ << "<form>"
