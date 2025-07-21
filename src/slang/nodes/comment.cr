@@ -11,7 +11,7 @@ module Slang
           str << "#{buffer_name} << \"[#{conditional}]>\"\n" if conditional?
           str << "#{buffer_name} << \"#{value}\"\n" if value
           if children?
-            nodes.each do |node|
+            children.each do |node|
               node.to_s(str, buffer_name)
             end
             str << "#{buffer_name} << \"\n#{indentation}\"\n"

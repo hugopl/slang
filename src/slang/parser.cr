@@ -18,7 +18,7 @@ module Slang
         when :NEWLINE
           next_token
         when :DOCTYPE
-          @document.nodes << Nodes::Doctype.new(@document, token)
+          @document.children << Nodes::Doctype.new(@document, token)
           next_token
         when :ELEMENT, :TEXT, :HTML, :COMMENT, :CONTROL, :OUTPUT
           parent = @current_node
@@ -51,14 +51,14 @@ module Slang
                 last_control_node.branches << node
               else
                 @control_nodes_per_column[node.column_number] = node
-                parent.nodes << node
+                parent.children << node
               end
             else
               @control_nodes_per_column[node.column_number] = node
-              parent.nodes << node
+              parent.children << node
             end
           else
-            parent.nodes << node
+            parent.children << node
           end
           @current_node = node
           next_token

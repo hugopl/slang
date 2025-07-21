@@ -40,7 +40,7 @@ module Slang
         end
         str << "#{buffer_name} << \">\"\n"
         if children?
-          nodes.each do |node|
+          children.each do |node|
             node.to_s(str, buffer_name)
           end
         end
@@ -54,7 +54,7 @@ module Slang
       end
 
       def only_inline_children?
-        nodes.all? { |n| n.inline }
+        children.all? { |n| n.inline }
       end
 
       def self_closing?

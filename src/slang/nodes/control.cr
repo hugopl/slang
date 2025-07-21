@@ -70,7 +70,7 @@ module Slang
       def to_s(str, buffer_name)
         str << "#{value}\n"
         if children?
-          nodes.each do |node|
+          children.each do |node|
             node.to_s(str, buffer_name)
           end
         end

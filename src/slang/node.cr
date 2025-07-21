@@ -1,17 +1,14 @@
 module Slang
   abstract class Node
     getter :parent, :token
+    getter children : Array(Node) = [] of Node
     delegate :value, :column_number, :line_number, :name, :escaped, :inline, to: @token
 
     def initialize(@parent : Node, @token : Token)
     end
 
-    def nodes # children
-      @nodes ||= [] of Node
-    end
-
-    def children?
-      nodes.size > 0
+    def children? : Bool
+      !@children.empty?
     end
 
     def allow_children_to_escape?
@@ -45,7 +42,7 @@ module Slang
     end
 
     def to_s(str, buffer_name)
-      nodes.each do |node|
+      @children.each do |node|
         node.to_s(str, buffer_name)
       end
     end
