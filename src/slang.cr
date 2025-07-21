@@ -13,8 +13,11 @@ module Slang
   extend self
   DEFAULT_BUFFER_NAME = "__slang__"
 
-  def process_string(slang, filename = "dummy.slang", buffer_name = DEFAULT_BUFFER_NAME)
-    Slang::Parser.new(slang).parse(buffer_name)
+  def process_string(slang, filename = "dummy.slang", buffer_name = DEFAULT_BUFFER_NAME) : String
+    String.build do |str|
+      document = Slang::Parser.new(slang).parse
+      document.to_s(str, buffer_name)
+    end
   end
 
   def process_file(filename, buffer_name = DEFAULT_BUFFER_NAME)
