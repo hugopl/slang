@@ -43,10 +43,8 @@ module Slang
       indentation_spaces.times.map { " " }.join("")
     end
 
-    def to_s(str, buffer_name)
-      @children.each do |node|
-        node.to_s(str, buffer_name)
-      end
+    def accept(visitor : Visitor)
+      visitor.visit(self)
     end
   end
 end

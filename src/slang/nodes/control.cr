@@ -66,21 +66,6 @@ module Slang
       def endable?
         !branch? && children? || branches?
       end
-
-      def to_s(str, buffer_name)
-        str << "#{value}\n"
-        if children?
-          children.each do |node|
-            node.to_s(str, buffer_name)
-          end
-        end
-        if branches?
-          branches.each do |branch|
-            branch.to_s(str, buffer_name)
-          end
-        end
-        str << "end\n" if endable?
-      end
     end
   end
 end
