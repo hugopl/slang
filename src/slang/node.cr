@@ -1,8 +1,10 @@
 module Slang
   abstract class Node
-    getter :parent, :token
+    getter parent : Node
     getter children : Array(Node) = [] of Node
-    delegate :value, :column_number, :line_number, :name, :escaped, :inline, to: @token
+    getter token : Token
+
+    delegate value, column_number, line_number, name, escaped, inline, to: @token
 
     def initialize(@parent : Node, @token : Token)
     end
