@@ -13,14 +13,14 @@ module Slang
     def parse : Document
       loop do
         case token.type
-        when :EOF
+        in .eof?
           break
-        when :NEWLINE
+        in .newline?
           next_token
-        when :DOCTYPE
+        in .doctype?
           @document.children << Nodes::Doctype.new(@document, token)
           next_token
-        when :ELEMENT, :TEXT, :HTML, :COMMENT, :CONTROL, :OUTPUT
+        in .element?, .text?, .html?, .comment?, .control?, .output?
           parent = @current_node
 
           # find the parent
@@ -32,11 +32,11 @@ module Slang
           end
 
           node = case token.type
-                 when :ELEMENT
+                 when .element?
                    Nodes::Element.new(parent, token)
-                 when :CONTROL
+                 when .control?
                    Nodes::Control.new(parent, token)
-                 when :COMMENT
+                 when .comment?
                    Nodes::Comment.new(parent, token)
                  else
                    Nodes::Text.new(parent, token)
@@ -62,8 +62,6 @@ module Slang
           end
           @current_node = node
           next_token
-        else
-          unexpected_token
         end
       end
       @document
@@ -71,9 +69,5 @@ module Slang
 
     private delegate token, to: @lexer
     private delegate next_token, to: @lexer
-
-    private def unexpected_token
-      raise "unexpected token '#{token}'"
-    end
   end
 end

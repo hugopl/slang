@@ -1,6 +1,18 @@
 module Slang
   class Token
-    property type : Symbol = :EOF
+    enum Type
+      EOF
+      Newline
+      Text
+      Element
+      Doctype
+      Control
+      Output
+      HTML
+      Comment
+    end
+
+    property type : Type = :EOF
     property line_number : Int32 = 0
     property column_number : Int32 = 0
     # elements

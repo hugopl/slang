@@ -22,7 +22,7 @@ module Slang
         @raw_text_column = 0
       end
 
-      inline = @raw_text_column > 0 || (@last_token.type == :ELEMENT && @last_token.line_number == @line_number)
+      inline = @raw_text_column > 0 || (@last_token.type.element? && @last_token.line_number == @line_number)
 
       case current_char
       when '\0'

@@ -18,7 +18,7 @@ module Slang
         end
 
         # This is an output (code) token and has children
-        if token.type == :OUTPUT && children?
+        if token.type.output? && children?
           sub_buffer_name = "#{buffer_name}#{Random::Secure.hex(8)}"
           str << "(#{value}\nString.build do |#{sub_buffer_name}|\n"
           children.each do |node|
@@ -35,7 +35,7 @@ module Slang
         end
         str << ".to_s(#{buffer_name})\n"
 
-        if token.type != :OUTPUT && children?
+        if !token.type.output? && children?
           children.each do |node|
             node.to_s(str, buffer_name)
           end
