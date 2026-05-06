@@ -4,77 +4,105 @@ module Slang
   class Codegen < Visitor
     private getter str : String::Builder
     private getter buffer_name : String
-
-    delegate to_s, to: @str
+    @pending_static : String = ""
 
     def initialize(@buffer_name = DEFAULT_BUFFER_NAME, @str : String::Builder = String::Builder.new)
     end
 
+    def to_s : String
+      flush_static
+      @str.to_s
+    end
+
+    # Flush the accumulated static string as a single io << call.
+    # Protected so sub-codegens can be flushed by the parent.
+    protected def flush_static
+      unless @pending_static.empty?
+        str << "#{buffer_name} << #{@pending_static.inspect}\n"
+        @pending_static = ""
+      end
+    end
+
+    private def emit_static(s : String)
+      @pending_static += s
+    end
+
+    private def any_output?
+      !str.empty? || !@pending_static.empty?
+    end
+
     def visit(node : Nodes::Doctype)
-      str << "#{buffer_name} << \"<!DOCTYPE #{node.value}>\"\n"
+      emit_static("<!DOCTYPE #{node.value}>")
     end
 
     def visit(node : Nodes::Comment)
       return unless node.visible
 
-      str << "#{buffer_name} << \"\n\"\n" unless str.empty?
-      str << "#{buffer_name} << \"#{node.indentation}\"\n" if node.indent?
-      str << "#{buffer_name} << \"<!--\"\n"
-      str << "#{buffer_name} << \"[#{node.conditional}]>\"\n" if node.conditional?
-      str << "#{buffer_name} << \"#{node.value}\"\n" if node.value
+      emit_static("\n") if any_output?
+      emit_static(node.indentation) if node.indent?
+      emit_static("<!--")
+      emit_static("[#{node.conditional}]>") if node.conditional?
+      emit_static(node.value.to_s) if node.value
       if node.children?
+        flush_static
         visit_children(node)
-        str << "#{buffer_name} << \"\n#{node.indentation}\"\n"
+        emit_static("\n#{node.indentation}")
       end
-      str << "#{buffer_name} << \"<![endif]\"\n" if node.conditional?
-      str << "#{buffer_name} << \"-->\"\n"
+      emit_static("<![endif]") if node.conditional?
+      emit_static("-->")
     end
 
     def visit(node : Nodes::Element)
-      str << "#{buffer_name} << \"\n\"\n" unless str.empty?
-      str << "#{buffer_name} << \"#{node.indentation}\"\n" if node.indent?
-      str << "#{buffer_name} << \"<#{node.name}\"\n"
-      str << "#{buffer_name} << \" id=\\\"#{node.id}\\\"\"\n" if node.id
+      emit_static("\n") if any_output?
+      emit_static(node.indentation) if node.indent?
+      emit_static("<#{node.name}")
+      emit_static(" id=\"#{node.id}\"") if node.id
       c_names = node.generate_class_names
       if c_names && c_names != ""
-        str << "#{buffer_name} << \" class\"\n"
-        str << "#{buffer_name} << \"=\\\"\"\n"
+        # c_names may contain Crystal interpolation (e.g. "#{klass}"), so we
+        # cannot use emit_static+inspect here — that would escape the #{.
+        flush_static
+        str << "#{buffer_name} << \" class=\\\"\"\n"
         str << "(\"#{c_names}\").to_s #{buffer_name}\n"
         str << "#{buffer_name} << \"\\\"\"\n"
       end
       node.attributes.each do |name, value|
-        str << "unless #{value} == false\n" # remove the attribute if value evaluates to false
-        str << "#{buffer_name} << \" #{name}\"\n"
-        str << "unless #{value} == true\n" # remove the value if value evaluates to true
-        # any other attribute value.
-        str << "#{buffer_name} << \"=\\\"\"\n"
+        flush_static
+        str << "unless #{value} == false\n"
+        emit_static(" #{name}")
+        flush_static
+        str << "unless #{value} == true\n"
+        emit_static("=\"")
+        flush_static
         str << "#{buffer_name} << (#{value}).to_s.gsub(/\"/,\"&quot;\")\n"
-        str << "#{buffer_name} << \"\\\"\"\n"
+        emit_static("\"")
+        flush_static
         str << "end\n"
         str << "end\n"
       end
-      str << "#{buffer_name} << \">\"\n"
+      emit_static(">")
+      flush_static
       visit_children(node)
       if !node.self_closing?
         if node.children? && !node.only_inline_children?
-          str << "#{buffer_name} << \"\n\"\n"
-          str << "#{buffer_name} << \"#{node.indentation}\"\n" if node.indent?
+          emit_static("\n")
+          emit_static(node.indentation) if node.indent?
         end
-        str << "#{buffer_name} << \"</#{node.name}>\"\n"
+        emit_static("</#{node.name}>")
       end
     end
 
     def visit(node : Nodes::Text)
-      str << "#{buffer_name} << \"\n\"\n" unless str.empty? || node.inline
-      str << "#{buffer_name} << \"#{node.indentation}\"\n" if node.indent?
+      emit_static("\n") if any_output? && !node.inline
+      emit_static(node.indentation) if node.indent?
+      flush_static
+
       str << "#{buffer_name} << "
 
-      # Escaping.
       if node.escaped && node.parent.allow_children_to_escape?
         str << "HTML.escape("
       end
 
-      # This is an output (code) token and has children
       if node.token.type.output? && node.children?
         sub_buffer_name = "#{buffer_name}#{Random::Secure.hex(8)}"
         str << "(#{node.value}\nString.build do |#{sub_buffer_name}|\n"
@@ -82,12 +110,12 @@ module Slang
         node.children.each do |child_node|
           child_node.accept(sub_codegen)
         end
+        sub_codegen.flush_static
         str << "end\nend)"
       else
         str << "(#{node.value})"
       end
 
-      # escaping, need to close HTML.escape
       if node.escaped && node.parent.allow_children_to_escape?
         str << ".to_s)"
       end
@@ -99,11 +127,13 @@ module Slang
     end
 
     def visit(node : Nodes::Control)
+      flush_static
       str << "#{node.value}\n"
       visit_children(node)
       node.branches.each do |branch|
         branch.accept(self)
       end
+      flush_static
       str << "end\n" if node.endable?
     end
   end
