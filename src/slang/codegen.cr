@@ -1,4 +1,5 @@
 require "./visitor"
+require "html"
 
 module Slang
   class Codegen < Visitor
@@ -95,8 +96,23 @@ module Slang
     def visit(node : Nodes::Text)
       emit_static("\n") if any_output? && !node.inline
       emit_static(node.indentation) if node.indent?
-      flush_static
 
+      # For Text-type tokens (| and ' syntax) whose value is a plain Crystal
+      # string literal with no escape sequences and no #{} interpolation, we
+      # can resolve the content and any HTML escaping at codegen time.
+      if node.token.type.text?
+        if (value = node.value) && value.size >= 2 && value[0] == '"' && value[-1] == '"'
+          inner = value[1..-2]
+          unless inner.includes?('\\') || inner.includes?("\#{")
+            text = node.escaped && node.parent.allow_children_to_escape? ? HTML.escape(inner) : inner
+            emit_static(text)
+            visit_children(node) if node.children?
+            return
+          end
+        end
+      end
+
+      flush_static
       str << "#{buffer_name} << "
 
       if node.escaped && node.parent.allow_children_to_escape?
