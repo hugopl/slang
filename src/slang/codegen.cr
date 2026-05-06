@@ -67,19 +67,29 @@ module Slang
         str << "(\"#{c_names}\").to_s #{buffer_name}\n"
         str << "#{buffer_name} << \"\\\"\"\n"
       end
-      node.attributes.each do |name, value|
-        flush_static
-        str << "unless #{value} == false\n"
-        emit_static(" #{name}")
-        flush_static
-        str << "unless #{value} == true\n"
-        emit_static("=\"")
-        flush_static
-        str << "#{buffer_name} << (#{value}).to_s.gsub(/\"/,\"&quot;\")\n"
-        emit_static("\"")
-        flush_static
-        str << "end\n"
-        str << "end\n"
+      node.attributes.each do |name, attr|
+        case attr
+        when Token::AttributeValue
+          if attr.literal
+            # Value is a quoted template literal — strip surrounding quotes,
+            # pre-compute the &quot; escaping, and fold into the static buffer.
+            inner = attr.value[1..-2]
+            emit_static(" #{name}=\"#{inner.gsub('"', "&quot;")}\"")
+          else
+            flush_static
+            str << "unless #{attr.value} == false\n"
+            emit_static(" #{name}")
+            flush_static
+            str << "unless #{attr.value} == true\n"
+            emit_static("=\"")
+            flush_static
+            str << "#{buffer_name} << (#{attr.value}).to_s.gsub(/\"/,\"&quot;\")\n"
+            emit_static("\"")
+            flush_static
+            str << "end\n"
+            str << "end\n"
+          end
+        end
       end
       emit_static(">")
       flush_static
