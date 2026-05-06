@@ -45,7 +45,6 @@ module Slang
       emit_static("[#{node.conditional}]>") if node.conditional?
       emit_static(node.value.to_s) if node.value
       if node.children?
-        flush_static
         visit_children(node)
         emit_static("\n#{node.indentation}")
       end
@@ -92,7 +91,6 @@ module Slang
         end
       end
       emit_static(">")
-      flush_static
       visit_children(node)
       if !node.self_closing?
         if node.children? && !node.only_inline_children?
