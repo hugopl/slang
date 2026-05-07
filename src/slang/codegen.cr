@@ -17,11 +17,21 @@ module Slang
 
     # Flush the accumulated static string as a single io << call.
     # Protected so sub-codegens can be flushed by the parent.
+    # Multi-line strings are split at newline boundaries and emitted as adjacent
+    # string literals joined by \ continuation so each HTML line is readable.
     protected def flush_static
-      unless @pending_static.empty?
+      return if @pending_static.empty?
+
+      if @pending_static.includes?('\n')
+        parts = [] of String
+        @pending_static.each_line(chomp: false) { |line| parts << line }
+        indent = " " * (buffer_name.size + 4)
+        str << "#{buffer_name} << #{parts.map(&.inspect).join(" \\\n#{indent}")}\n"
+      else
         str << "#{buffer_name} << #{@pending_static.inspect}\n"
-        @pending_static = ""
       end
+
+      @pending_static = ""
     end
 
     private def emit_static(s : String)
