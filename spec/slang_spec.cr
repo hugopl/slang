@@ -13,6 +13,10 @@ def evaluates_to_hello
   "hello"
 end
 
+def passthrough(arg)
+  arg
+end
+
 describe Slang do
   it "renders a basic document" do
     res = render_file("spec/fixtures/basic.slang")
