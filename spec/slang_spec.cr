@@ -224,7 +224,43 @@ describe Slang do
     end
   end
 
+  describe "comments" do
+    it "ignores invisible comments" do
+      render("/ invisible\nspan Foo").should eq "<span>Foo</span>"
+    end
+
+    it "renders single-line visible comments" do
+      render("/! a comment").should eq "<!--a comment-->"
+    end
+
+    it "renders visible comments with children" do
+      render("/!\n  span Child").should eq "<!--\n  <span>Child</span>\n-->"
+    end
+
+    it "renders conditional IE comments" do
+      render("/[if IE]\n  p Old browser").should eq "<!--[if IE]>\n  <p>Old browser</p>\n<![endif]-->"
+    end
+  end
+
+  describe "shorthand elements" do
+    it "renders div for #id shorthand" do
+      render("#my-id").should eq %(<div id="my-id"></div>)
+    end
+
+    it "renders div for .class shorthand" do
+      render(".my-class").should eq %(<div class="my-class"></div>)
+    end
+
+    it "renders div for combined #id.class shorthand" do
+      render("#my-id.my-class").should eq %(<div id="my-id" class="my-class"></div>)
+    end
+  end
+
   describe "text node" do
+    it "appends trailing space with ' prefix" do
+      render("span\n  ' hello").should eq "<span>\n  hello \n</span>"
+    end
+
     it "properly escapes double quotes" do
       res = render_file "spec/fixtures/double-quotes.slang"
 
@@ -288,6 +324,10 @@ describe Slang do
       </script>
       HTML
     end
+    it "renders css: as a style tag" do
+      render("css:\n  h1 {color:red;}").should eq "<style>\n  h1 {color:red;}\n</style>"
+    end
+
     it "renders stylesheets" do
       res = render_file "spec/fixtures/style.slang"
       res.should eq <<-HTML

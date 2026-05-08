@@ -237,8 +237,8 @@ module Slang
       @token.type = :TEXT
       append_whitespace = current_char == '\''
       next_char if current_char == '|' || current_char == '\''
-      skip_whitespace
-      @token.value = "\"#{consume_text_line.strip}#{append_whitespace ? " " : ""}\""
+      next_char if current_char == ' '
+      @token.value = "\"#{consume_text_line.rstrip}#{append_whitespace ? " " : ""}\""
     end
 
     private def consume_text_line
