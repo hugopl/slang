@@ -9,11 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: crystal-lang/install-crystal@v1
-        with:
-          crystal: latest
-          ameba: latest
-      - run: ameba
+      - name: Run Ameba Linter
+        uses: crystal-ameba/github-action@master
 
   test:
     runs-on: ${{ matrix.os }}
