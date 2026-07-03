@@ -76,6 +76,13 @@ module Slang
         str << "(\"#{c_names}\").to_s #{buffer_name}\n"
         str << "#{buffer_name} << \"\\\"\"\n"
       end
+      render_attributes(node)
+      emit_static(">")
+      visit_children(node)
+      render_element_close(node)
+    end
+
+    private def render_attributes(node : Nodes::Element)
       node.attributes.each do |name, attr|
         case attr
         when Token::AttributeValue
@@ -100,8 +107,9 @@ module Slang
           end
         end
       end
-      emit_static(">")
-      visit_children(node)
+    end
+
+    private def render_element_close(node : Nodes::Element)
       if !node.self_closing?
         if node.children? && !node.only_inline_children?
           emit_static("\n")
@@ -115,6 +123,12 @@ module Slang
       emit_static("\n") if any_output? && !node.inline
       emit_static(node.indentation) if node.indent?
 
+      return if try_emit_literal_text(node)
+
+      emit_dynamic_text(node)
+    end
+
+    private def try_emit_literal_text(node : Nodes::Text) : Bool
       # For Text-type tokens (| and ' syntax) whose value is a plain Crystal
       # string literal with no escape sequences and no #{} interpolation, we
       # can resolve the content and any HTML escaping at codegen time.
@@ -125,11 +139,14 @@ module Slang
             text = node.escaped && node.parent.allow_children_to_escape? ? HTML.escape(inner) : inner
             emit_static(text)
             visit_children(node) if node.children?
-            return
+            return true
           end
         end
       end
+      false
+    end
 
+    private def emit_dynamic_text(node : Nodes::Text)
       flush_static
       str << "#{buffer_name} << "
 

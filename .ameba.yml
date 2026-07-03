@@ -3,11 +3,6 @@
 # The point is for the user to remove these configuration records
 # one by one as the reported problems are removed from the code base.
 
-Metrics/CyclomaticComplexity:
-  Enabled: false
-
-Lint/NotNil:
-  Enabled: false
 
 # Problems found: 1
 # Run `ameba --only Naming/BlockParameterName` for details
