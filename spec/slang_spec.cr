@@ -23,6 +23,12 @@ def extract(slang) : Array(Slang::Extractor::Entry)
   extractor.entries
 end
 
+def codegen(slang, catalog = nil) : String
+  cg = Slang::Codegen.new(catalog: catalog)
+  Slang::Parser.new(slang).parse.accept(cg)
+  cg.to_s
+end
+
 describe Slang do
   it "renders a basic document" do
     res = render_file("spec/fixtures/basic.slang")
@@ -476,30 +482,82 @@ describe Slang do
   end
 
   describe "i18n codegen" do
-    it "does not call t() when translate is false" do
-      code = Slang.process_string(%(p Save))
+    it "leaves text untouched when no catalog is given" do
+      codegen(%(p Save)).should contain("Save")
+    end
+
+    it "bakes the translated string directly into the buffer, with no runtime lookup" do
+      code = codegen(%(p Save), {"Save" => "Salvar"})
+      code.should contain("Salvar")
       code.should_not contain("t(")
+      code.should_not contain("Save")
     end
 
-    it "wraps translatable tag text in t() when translate is true" do
-      code = Slang.process_string(%(p Save), translate: true)
-      code.should contain(%(t("Save")))
+    it "falls back to the source string when the catalog has no entry" do
+      codegen(%(p Save), {} of String => String).should contain("Save")
     end
 
-    it "wraps only allowlisted literal attributes in t() when translate is true" do
-      code = Slang.process_string(%(input placeholder="Search" class="foo"), translate: true)
-      code.should contain(%(t("Search")))
-      code.should_not contain(%(t("foo")))
+    it "translates only allowlisted literal attributes" do
+      code = codegen(%(input placeholder="Search" class="foo"), {"Search" => "Pesquisar", "foo" => "should never be looked up"})
+      code.should contain("Pesquisar")
+      code.should_not contain("should never be looked up")
     end
 
-    it "does not translate pre/code content even when translate is true" do
-      code = Slang.process_string("pre\n  code Save\n", translate: true)
-      code.should_not contain("t(")
+    it "does not translate pre/code content even with a catalog" do
+      codegen("pre\n  code Save\n", {"Save" => "Salvar"}).should contain("Save")
     end
 
-    it "does not translate text with no letters even when translate is true" do
-      code = Slang.process_string(%(span —), translate: true)
-      code.should_not contain("t(")
+    it "does not translate text with no letters even with a catalog" do
+      codegen(%(span —), {"—" => "should never be looked up"}).should_not contain("should never be looked up")
+    end
+  end
+
+  describe "Po.parse" do
+    it "parses plain msgid/msgstr pairs" do
+      Slang::Po.parse(%(msgid "Save"\nmsgstr "Salvar"\n)).should eq({"Save" => "Salvar"})
+    end
+
+    it "skips the header entry (empty msgid)" do
+      Slang::Po.parse(%(msgid ""\nmsgstr "Content-Type: text/plain\\n"\n)).should be_empty
+    end
+
+    it "skips fuzzy entries" do
+      Slang::Po.parse(%(#, fuzzy\nmsgid "Save"\nmsgstr "Salvar"\n)).should be_empty
+    end
+
+    it "skips entries with an empty msgstr" do
+      Slang::Po.parse(%(msgid "Save"\nmsgstr ""\n)).should be_empty
+    end
+
+    it "joins multi-line string literals" do
+      Slang::Po.parse(%(msgid ""\n"Save"\nmsgstr ""\n"Salvar"\n)).should eq({"Save" => "Salvar"})
+    end
+
+    it "unescapes \\n and \\\" within string literals" do
+      Slang::Po.parse(%(msgid "a\\nb"\nmsgstr "c\\"d"\n)).should eq({"a\nb" => "c\"d"})
+    end
+  end
+
+  describe "i18n end-to-end (render_i18n)" do
+    it "renders the matching locale's translation" do
+      lang = "pt_BR"
+      render_i18n(%(p Save), lang).should eq "<p>Salvar</p>"
+    end
+
+    it "falls back to the source language for an unknown locale" do
+      lang = "fr"
+      render_i18n(%(p Save), lang).should eq "<p>Save</p>"
+    end
+
+    it "falls back to the source string for a fuzzy or untranslated entry" do
+      lang = "pt_BR"
+      render_i18n(%(p Cancel), lang).should eq "<p>Cancel</p>"
+      render_i18n(%(p Untranslated), lang).should eq "<p>Untranslated</p>"
+    end
+
+    it "translates allowlisted attributes too" do
+      lang = "pt_BR"
+      render_i18n(%(input placeholder="Search"), lang).should eq %(<input placeholder="Pesquisar">)
     end
   end
 end

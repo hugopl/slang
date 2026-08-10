@@ -9,10 +9,12 @@ module Slang
     @pending_static : String = ""
     @no_translate_depth = 0
 
-    # False by default: Codegen is shared by anyone embedding Slang templates,
-    # and most consumers never define a t() method. Only pass true when the
-    # host application provides one (see process.cr's --translate flag).
-    def initialize(@buffer_name = DEFAULT_BUFFER_NAME, @str : String::Builder = String::Builder.new, @translate : Bool = false)
+    # Nil by default: Codegen is shared by anyone embedding Slang templates,
+    # and most consumers have no locales at all. When a catalog is given,
+    # every translatable literal is resolved to its msgstr (or left as-is if
+    # missing) right here at codegen time and folded into the same static
+    # buffer as ordinary text — one pass per locale, no runtime lookup.
+    def initialize(@buffer_name = DEFAULT_BUFFER_NAME, @str : String::Builder = String::Builder.new, @catalog : Hash(String, String)? = nil)
     end
 
     def to_s : String
@@ -97,16 +99,16 @@ module Slang
       node.attributes.each do |name, attr|
         case attr
         when Token::AttributeValue
-          if @translate && attr.literal && Translatable::ATTRIBUTES.includes?(name) && (text = Translatable.literal_text(attr.value))
-            flush_static
-            str << "#{buffer_name} << \" #{name}=\\\"\"\n"
-            str << "#{buffer_name} << t(#{text.inspect}).gsub(/\"/,\"&quot;\")\n"
-            str << "#{buffer_name} << \"\\\"\"\n"
-          elsif attr.literal
+          if attr.literal
             # Value is a quoted template literal — strip surrounding quotes,
-            # pre-compute the &quot; escaping, and fold into the static buffer.
+            # resolve translation (if any) and the &quot; escaping at codegen
+            # time, and fold the result into the static buffer.
             inner = attr.value[1..-2]
-            emit_static(" #{name}=\"#{inner.gsub('"', "&quot;")}\"")
+            if Translatable::ATTRIBUTES.includes?(name) && (text = Translatable.literal_text(attr.value))
+              emit_static(" #{name}=\"#{resolve_translation(text).gsub('"', "&quot;")}\"")
+            else
+              emit_static(" #{name}=\"#{inner.gsub('"', "&quot;")}\"")
+            end
           else
             flush_static
             str << "unless #{attr.value} == false\n"
@@ -146,18 +148,23 @@ module Slang
     end
 
     private def try_emit_translated_text(node : Nodes::Text) : Bool
-      return false unless @translate
+      return false unless @catalog
       return false if @no_translate_depth > 0
       return false unless text = Translatable.literal_text(node.value)
 
-      flush_static
-      str << "#{buffer_name} << "
-      str << "HTML.escape(" if node.escaped && node.parent.allow_children_to_escape?
-      str << "t(#{text.inspect})"
-      str << ".to_s)" if node.escaped && node.parent.allow_children_to_escape?
-      str << ".to_s\n"
+      resolved = resolve_translation(text)
+      resolved = HTML.escape(resolved) if node.escaped && node.parent.allow_children_to_escape?
+      emit_static(resolved)
       visit_children(node) if node.children?
       true
+    end
+
+    # Looks up `msgid` in the current locale's catalog; gettext semantics
+    # apply, so a missing or empty msgstr falls back to the source string.
+    private def resolve_translation(msgid : String) : String
+      return msgid unless catalog = @catalog
+      translation = catalog[msgid]?
+      translation && !translation.empty? ? translation : msgid
     end
 
     private def try_emit_literal_text(node : Nodes::Text) : Bool
@@ -189,7 +196,7 @@ module Slang
       if node.token.type.output? && node.children?
         sub_buffer_name = "#{buffer_name}#{Random::Secure.hex(8)}"
         str << "(#{node.value}\nString.build do |#{sub_buffer_name}|\n"
-        sub_codegen = Codegen.new(sub_buffer_name, str, @translate)
+        sub_codegen = Codegen.new(sub_buffer_name, str, @catalog)
         node.children.each do |child_node|
           child_node.accept(sub_codegen)
         end
