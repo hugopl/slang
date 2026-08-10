@@ -1,4 +1,5 @@
 require "./visitor"
+require "./translatable"
 require "html"
 
 module Slang
@@ -6,8 +7,12 @@ module Slang
     private getter str : String::Builder
     private getter buffer_name : String
     @pending_static : String = ""
+    @no_translate_depth = 0
 
-    def initialize(@buffer_name = DEFAULT_BUFFER_NAME, @str : String::Builder = String::Builder.new)
+    # False by default: Codegen is shared by anyone embedding Slang templates,
+    # and most consumers never define a t() method. Only pass true when the
+    # host application provides one (see process.cr's --translate flag).
+    def initialize(@buffer_name = DEFAULT_BUFFER_NAME, @str : String::Builder = String::Builder.new, @translate : Bool = false)
     end
 
     def to_s : String
@@ -78,7 +83,13 @@ module Slang
       end
       render_attributes(node)
       emit_static(">")
-      visit_children(node)
+      if Nodes::Element::NO_TRANSLATE_TAGS.includes?(node.name)
+        @no_translate_depth += 1
+        visit_children(node)
+        @no_translate_depth -= 1
+      else
+        visit_children(node)
+      end
       render_element_close(node)
     end
 
@@ -86,7 +97,12 @@ module Slang
       node.attributes.each do |name, attr|
         case attr
         when Token::AttributeValue
-          if attr.literal
+          if @translate && attr.literal && Translatable::ATTRIBUTES.includes?(name) && (text = Translatable.literal_text(attr.value))
+            flush_static
+            str << "#{buffer_name} << \" #{name}=\\\"\"\n"
+            str << "#{buffer_name} << t(#{text.inspect}).gsub(/\"/,\"&quot;\")\n"
+            str << "#{buffer_name} << \"\\\"\"\n"
+          elsif attr.literal
             # Value is a quoted template literal — strip surrounding quotes,
             # pre-compute the &quot; escaping, and fold into the static buffer.
             inner = attr.value[1..-2]
@@ -123,9 +139,25 @@ module Slang
       emit_static("\n") if any_output? && !node.inline
       emit_static(node.indentation) if node.indent?
 
+      return if try_emit_translated_text(node)
       return if try_emit_literal_text(node)
 
       emit_dynamic_text(node)
+    end
+
+    private def try_emit_translated_text(node : Nodes::Text) : Bool
+      return false unless @translate
+      return false if @no_translate_depth > 0
+      return false unless text = Translatable.literal_text(node.value)
+
+      flush_static
+      str << "#{buffer_name} << "
+      str << "HTML.escape(" if node.escaped && node.parent.allow_children_to_escape?
+      str << "t(#{text.inspect})"
+      str << ".to_s)" if node.escaped && node.parent.allow_children_to_escape?
+      str << ".to_s\n"
+      visit_children(node) if node.children?
+      true
     end
 
     private def try_emit_literal_text(node : Nodes::Text) : Bool
@@ -157,7 +189,7 @@ module Slang
       if node.token.type.output? && node.children?
         sub_buffer_name = "#{buffer_name}#{Random::Secure.hex(8)}"
         str << "(#{node.value}\nString.build do |#{sub_buffer_name}|\n"
-        sub_codegen = Codegen.new(sub_buffer_name, str)
+        sub_codegen = Codegen.new(sub_buffer_name, str, @translate)
         node.children.each do |child_node|
           child_node.accept(sub_codegen)
         end

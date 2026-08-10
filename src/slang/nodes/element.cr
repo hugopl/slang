@@ -3,6 +3,8 @@ module Slang
     class Element < Node
       SELF_CLOSING_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "keygen", "link", "menuitem", "meta", "param", "source", "track", "wbr"}
       RAW_TEXT_TAGS     = %w(script style)
+      # script/style are code, not prose; pre/code are verbatim. None of it goes to translators.
+      NO_TRANSLATE_TAGS = RAW_TEXT_TAGS + %w(pre code)
 
       delegate name, id, attributes, to: @token
 

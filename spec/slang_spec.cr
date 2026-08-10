@@ -17,6 +17,12 @@ def passthrough(arg)
   arg
 end
 
+def extract(slang) : Array(Slang::Extractor::Entry)
+  extractor = Slang::Extractor.new
+  Slang::Parser.new(slang).parse.accept(extractor)
+  extractor.entries
+end
+
 describe Slang do
   it "renders a basic document" do
     res = render_file("spec/fixtures/basic.slang")
@@ -421,6 +427,79 @@ describe Slang do
     it "renders template with CRLF endings properly" do
       res = render "div(hello=\"world\")\r\n  span pid=Process.pid\r\n"
       res.should eq "<div hello=\"world\">\n  <span pid=\"#{Process.pid}\"></span>\n</div>"
+    end
+  end
+
+  describe "i18n extraction" do
+    it "collects tag text together with its line number" do
+      entries = extract("div\n  p Save\n")
+      entries.map(&.msgid).should eq ["Save"]
+      entries.first.line_number.should eq 2
+    end
+
+    it "collects only the allowlisted literal attributes" do
+      entries = extract(%(input placeholder="Search" title="Find" type="text" class="foo"))
+      entries.map(&.msgid).sort!.should eq ["Find", "Search"]
+    end
+
+    it "skips text with no letters, such as separators" do
+      extract(%(span class="sep" —\np 42)).should be_empty
+    end
+
+    it "skips pre and code content" do
+      extract("pre\n  code Save\n").should be_empty
+    end
+
+    it "skips interpolated output" do
+      extract(%(p\n  = "hi \#{1}"\n)).should be_empty
+    end
+
+    it "attaches the preceding invisible comment as a translator comment" do
+      entries = extract("/ Translator: the file, not a person\np Name\n")
+      entries.first.msgid.should eq "Name"
+      entries.first.comment.should eq "Translator: the file, not a person"
+    end
+
+    it "does not leak a translator comment past the very next sibling" do
+      entries = extract("/ note\np Skip\np Name\n")
+      entries.map(&.comment).should eq ["note", nil]
+    end
+
+    it "formats entries as gettext .pot fragments" do
+      Slang.extract_strings(%(p Save), "views/demo.slang").should eq <<-POT
+      #: views/demo.slang:1
+      msgid "Save"
+      msgstr ""
+
+      POT
+    end
+  end
+
+  describe "i18n codegen" do
+    it "does not call t() when translate is false" do
+      code = Slang.process_string(%(p Save))
+      code.should_not contain("t(")
+    end
+
+    it "wraps translatable tag text in t() when translate is true" do
+      code = Slang.process_string(%(p Save), translate: true)
+      code.should contain(%(t("Save")))
+    end
+
+    it "wraps only allowlisted literal attributes in t() when translate is true" do
+      code = Slang.process_string(%(input placeholder="Search" class="foo"), translate: true)
+      code.should contain(%(t("Search")))
+      code.should_not contain(%(t("foo")))
+    end
+
+    it "does not translate pre/code content even when translate is true" do
+      code = Slang.process_string("pre\n  code Save\n", translate: true)
+      code.should_not contain("t(")
+    end
+
+    it "does not translate text with no letters even when translate is true" do
+      code = Slang.process_string(%(span —), translate: true)
+      code.should_not contain("t(")
     end
   end
 end
