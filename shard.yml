@@ -11,3 +11,8 @@ license: MIT
 development_dependencies:
   ameba:
     github: crystal-ameba/ameba
+  # Self path dependency so this shard is requirable as "slang" from its own
+  # specs: Slang.embed & friends `run()` "slang/slang/process", which only
+  # resolves through the shard-style lib/ path.
+  slang:
+    path: .
