@@ -7,6 +7,8 @@ require "./slang/parser"
 require "./slang/token"
 require "./slang/macros"
 require "./slang/codegen"
+require "./slang/expr"
+require "./slang/expr_parser"
 
 # require "./slang/*"
 
