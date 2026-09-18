@@ -16,24 +16,57 @@ module Slang
   extend self
   DEFAULT_BUFFER_NAME = "__slang__"
 
-  def process_string(slang, filename = "dummy.slang", buffer_name = DEFAULT_BUFFER_NAME) : String
+  @@default_locale = "en_US"
+
+  # The locale a template's own literal text is written in. Compared against
+  # `lang_expr` at codegen time (see Codegen#translated_expr): rendering in
+  # this locale skips every `t()` call and its lookup cost, so it stays the
+  # cheapest path regardless of how many other locales exist.
+  def default_locale : String
+    @@default_locale
+  end
+
+  def default_locale=(value : String)
+    @@default_locale = value
+  end
+
+  def process_string(slang, filename = "dummy.slang", buffer_name = DEFAULT_BUFFER_NAME, *, translate = false, lang_expr = "lang") : String
     document = Slang::Parser.new(slang).parse
-    codegen = Codegen.new(buffer_name)
+    codegen = Codegen.new(buffer_name, translate: translate, lang_expr: lang_expr)
     document.accept(codegen)
     codegen.to_s
   end
 
-  def process_file(filename, buffer_name = DEFAULT_BUFFER_NAME)
+  def process_file(filename, buffer_name = DEFAULT_BUFFER_NAME, *, translate = false, lang_expr = "lang")
     raise "Slang template: #{filename} doesn't exist." unless File.exists?(filename)
-    process_string(File.read(filename), filename, buffer_name)
+    process_string(File.read(filename), filename, buffer_name, translate: translate, lang_expr: lang_expr)
   end
 
-  # Every `<lang>.po` file in `locales_dir` becomes one `when` branch, each a
-  # full codegen pass with that locale's strings resolved and folded into the
-  # static buffer — no t(), no runtime hash lookup, one string compare total.
-  # The source-language text (untouched) is the `else` fallback, matching
+  # Same output regardless of locale count: every translatable literal becomes
+  # a `t(msgid, lang_expr)` call (fast-pathed when `lang_expr` matches
+  # `default_locale`, see Codegen#translated_expr), so there is exactly one
+  # codegen pass and no per-locale duplication of the template.
+  def process_string_i18n(slang, filename = "dummy.slang", buffer_name = DEFAULT_BUFFER_NAME, lang_expr = "lang") : String
+    process_string(slang, filename, buffer_name, translate: true, lang_expr: lang_expr)
+  end
+
+  def process_file_i18n(filename, buffer_name = DEFAULT_BUFFER_NAME, lang_expr = "lang")
+    raise "Slang template: #{filename} doesn't exist." unless File.exists?(filename)
+    process_string_i18n(File.read(filename), filename, buffer_name, lang_expr)
+  end
+
+  # The original per-locale approach: every `<lang>.po` file in `locales_dir`
+  # becomes one `when` branch, each a full Codegen pass with that locale's
+  # strings resolved and folded directly into the static buffer — no `t()`,
+  # no runtime hash lookup, one string compare total per render. The
+  # source-language text (untouched) is the `else` fallback, matching
   # gettext's own rule: a missing translation renders the msgid itself.
-  def process_string_i18n(slang, filename = "dummy.slang", buffer_name = DEFAULT_BUFFER_NAME, locales_dir = "locales", lang_expr = "lang") : String
+  #
+  # Trade-off vs `process_string_i18n`: zero runtime translation lookup cost,
+  # but one codegen pass per locale, so compile time/memory scales with
+  # locale-count × template-count. Prefer `process_string_i18n` unless that
+  # trade is worth it for your template set.
+  def process_string_inline_i18n(slang, filename = "dummy.slang", buffer_name = DEFAULT_BUFFER_NAME, locales_dir = "locales", lang_expr = "lang") : String
     locales = Dir.exists?(locales_dir) ? Dir.glob(File.join(locales_dir, "*.po")).map { |path| File.basename(path, ".po") }.sort! : [] of String
     return process_string(slang, filename, buffer_name) if locales.empty?
 
@@ -55,9 +88,9 @@ module Slang
     end
   end
 
-  def process_file_i18n(filename, buffer_name = DEFAULT_BUFFER_NAME, locales_dir = "locales", lang_expr = "lang")
+  def process_file_inline_i18n(filename, buffer_name = DEFAULT_BUFFER_NAME, locales_dir = "locales", lang_expr = "lang")
     raise "Slang template: #{filename} doesn't exist." unless File.exists?(filename)
-    process_string_i18n(File.read(filename), filename, buffer_name, locales_dir, lang_expr)
+    process_string_inline_i18n(File.read(filename), filename, buffer_name, locales_dir, lang_expr)
   end
 
   # Lists this file's translatable strings as .pot entries; does not touch

@@ -23,8 +23,8 @@ def extract(slang) : Array(Slang::Extractor::Entry)
   extractor.entries
 end
 
-def codegen(slang, catalog = nil) : String
-  cg = Slang::Codegen.new(catalog: catalog)
+def codegen(slang, translate = false, catalog = nil) : String
+  cg = Slang::Codegen.new(translate: translate, catalog: catalog)
   Slang::Parser.new(slang).parse.accept(cg)
   cg.to_s
 end
@@ -482,33 +482,56 @@ describe Slang do
   end
 
   describe "i18n codegen" do
-    it "leaves text untouched when no catalog is given" do
-      codegen(%(p Save)).should contain("Save")
+    it "leaves text untouched and emits no t() when translate is false" do
+      code = codegen(%(p Save))
+      code.should contain("Save")
+      code.should_not contain("t(")
     end
 
+    it "emits a t() call guarded by a default_locale fast path" do
+      code = codegen(%(p Save), translate: true)
+      code.should contain(%((lang == Slang.default_locale ? "Save" : t("Save", lang))))
+    end
+
+    it "translates only allowlisted literal attributes" do
+      code = codegen(%(input placeholder="Search" class="foo"), translate: true)
+      code.should contain(%(t("Search", lang)))
+      code.should_not contain(%(t("foo", lang)))
+    end
+
+    it "does not translate pre/code content even with translate: true" do
+      codegen("pre\n  code Save\n", translate: true).should_not contain("t(")
+    end
+
+    it "does not translate text with no letters even with translate: true" do
+      codegen(%(span —), translate: true).should_not contain("t(")
+    end
+  end
+
+  describe "i18n inline codegen (catalog)" do
     it "bakes the translated string directly into the buffer, with no runtime lookup" do
-      code = codegen(%(p Save), {"Save" => "Salvar"})
+      code = codegen(%(p Save), catalog: {"Save" => "Salvar"})
       code.should contain("Salvar")
       code.should_not contain("t(")
       code.should_not contain("Save")
     end
 
     it "falls back to the source string when the catalog has no entry" do
-      codegen(%(p Save), {} of String => String).should contain("Save")
+      codegen(%(p Save), catalog: {} of String => String).should contain("Save")
     end
 
     it "translates only allowlisted literal attributes" do
-      code = codegen(%(input placeholder="Search" class="foo"), {"Search" => "Pesquisar", "foo" => "should never be looked up"})
+      code = codegen(%(input placeholder="Search" class="foo"), catalog: {"Search" => "Pesquisar", "foo" => "should never be looked up"})
       code.should contain("Pesquisar")
       code.should_not contain("should never be looked up")
     end
 
     it "does not translate pre/code content even with a catalog" do
-      codegen("pre\n  code Save\n", {"Save" => "Salvar"}).should contain("Save")
+      codegen("pre\n  code Save\n", catalog: {"Save" => "Salvar"}).should contain("Save")
     end
 
     it "does not translate text with no letters even with a catalog" do
-      codegen(%(span —), {"—" => "should never be looked up"}).should_not contain("should never be looked up")
+      codegen(%(span —), catalog: {"—" => "should never be looked up"}).should_not contain("should never be looked up")
     end
   end
 
@@ -558,6 +581,46 @@ describe Slang do
     it "translates allowlisted attributes too" do
       lang = "pt_BR"
       render_i18n(%(input placeholder="Search"), lang).should eq %(<input placeholder="Pesquisar">)
+    end
+
+    it "takes the fast path for Slang.default_locale, defaulting to en_US" do
+      Slang.default_locale.should eq "en_US"
+      lang = "en_US"
+      render_i18n(%(p Save), lang).should eq "<p>Save</p>"
+    end
+
+    it "honors an overridden default_locale, bypassing t() even when a translation exists" do
+      Slang.default_locale = "pt_BR"
+      begin
+        # "Save" only has a "Salvar" msgstr under the pt_BR catalog; taking the
+        # fast path here means that catalog is never consulted.
+        render_i18n(%(p Save), "pt_BR").should eq "<p>Save</p>"
+      ensure
+        Slang.default_locale = "en_US"
+      end
+    end
+  end
+
+  describe "i18n end-to-end (render_inline_i18n)" do
+    it "renders the matching locale's translation" do
+      lang = "pt_BR"
+      render_inline_i18n(%(p Save), lang).should eq "<p>Salvar</p>"
+    end
+
+    it "falls back to the source language for an unknown locale" do
+      lang = "fr"
+      render_inline_i18n(%(p Save), lang).should eq "<p>Save</p>"
+    end
+
+    it "falls back to the source string for a fuzzy or untranslated entry" do
+      lang = "pt_BR"
+      render_inline_i18n(%(p Cancel), lang).should eq "<p>Cancel</p>"
+      render_inline_i18n(%(p Untranslated), lang).should eq "<p>Untranslated</p>"
+    end
+
+    it "translates allowlisted attributes too" do
+      lang = "pt_BR"
+      render_inline_i18n(%(input placeholder="Search"), lang).should eq %(<input placeholder="Pesquisar">)
     end
   end
 end

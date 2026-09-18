@@ -3,18 +3,21 @@ module Slang
     \{{ run("slang/slang/process", {{filename}}, {{io_name.id.stringify}}) }}
   end
 
-  # Like `embed`, but renders every locale in `locales_dir` (one `<lang>.po`
-  # file each) as its own static branch, dispatching on `lang` at runtime.
-  #
-  # Compile with `-Dslang_i18n_disabled` to skip locale codegen and fall back
-  # to plain `embed` (the source-language template, `lang` unused) — keeps
-  # dev builds fast since only one codegen pass runs instead of one per locale.
-  macro embed_i18n(filename, io_name, lang, locales_dir = "locales")
-    {% if flag?(:slang_i18n_disabled) %}
-      Slang.embed {{filename}}, {{io_name}}
-    {% else %}
-      \{{ run("slang/slang/process", "--i18n", {{filename}}, {{io_name.id.stringify}}, {{locales_dir}}, {{lang.stringify}}) }}
-    {% end %}
+  # Like `embed`, but resolves every translatable literal through a `t(msgid, lang)`
+  # call the host application provides, instead of baking one language into
+  # the binary. Rendering in `Slang.default_locale` skips `t()` entirely —
+  # see `Codegen#translated_expr`.
+  macro embed_i18n(filename, io_name, lang)
+    \{{ run("slang/slang/process", "--i18n", {{filename}}, {{io_name.id.stringify}}, {{lang.stringify}}) }}
+  end
+
+  # The original per-locale approach (see `Slang.process_string_inline_i18n`):
+  # resolves every translatable literal against `locales_dir`'s `.po`
+  # catalogs at compile time, with zero runtime translation lookup — at the
+  # cost of one full codegen pass per locale. Prefer `embed_i18n` unless that
+  # trade is worth it for your template set.
+  macro embed_inline_i18n(filename, io_name, lang, locales_dir = "locales")
+    \{{ run("slang/slang/process", "--inline-i18n", {{filename}}, {{io_name.id.stringify}}, {{locales_dir}}, {{lang.stringify}}) }}
   end
 
   # Use in a class
@@ -24,15 +27,15 @@ module Slang
     end
   end
 
-  macro file_i18n(filename, locales_dir = "locales")
-    {% if flag?(:slang_i18n_disabled) %}
-      def to_s(__slang__, lang)
-        Slang.embed {{filename}}, "__slang__"
-      end
-    {% else %}
-      def to_s(__slang__, lang)
-        Slang.embed_i18n {{filename}}, "__slang__", lang, {{locales_dir}}
-      end
-    {% end %}
+  macro file_i18n(filename)
+    def to_s(__slang__, lang)
+      Slang.embed_i18n {{filename}}, "__slang__", lang
+    end
+  end
+
+  macro file_inline_i18n(filename, locales_dir = "locales")
+    def to_s(__slang__, lang)
+      Slang.embed_inline_i18n {{filename}}, "__slang__", lang, {{locales_dir}}
+    end
   end
 end
